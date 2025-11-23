@@ -22,8 +22,17 @@ const UserSchema = new Schema({
   favorites: {
     type: [String],
     default: [],
+  },
+  role: {
+    type: String, enum: ['user', 'admin'], default: 'user'
+  },
+  twoFactorSecret: {
+    type: String,
+  },
+  isTwoFactorEnabled: {
+    type: Boolean,
+    default: false
   }
 });
 
-// Mencegah model-compile ulang
 module.exports = models.User || model('User', UserSchema);

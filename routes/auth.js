@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const speakeasy = require('speakeasy');
+const QRCode = require('qrcode');
 const dbConnect = require('../lib/dbConnect');
 
 // POST /api/register
@@ -61,6 +63,8 @@ router.post('/login', async (req, res) => {
         id: user._id, // Penting untuk Favorites
         email: user.email,
         username: user.username,
+        role: user.role,
+        isTwoFactorEnabled: user.isTwoFactorEnabled,
         favorites: user.favorites
       }
     });
@@ -69,5 +73,51 @@ router.post('/login', async (req, res) => {
     res.status(500).json({ message: 'An error occurred during login.', error: error.message });
   }
 });
+
+router.post('/setup-2fa', async(req, res) => {
+  try {
+    const { userId } = req.body;
+    await dbConnect();
+    const user = await User.findById(userId);
+
+    const secret = speakeasy.generateSecret({ name: `Pick A Brick (${user.email})`});
+
+    user.twoFactorSecret = secret.base32;
+    await user.save();
+
+    QRCode.toDataURL(secret.otpauth_url, (err, data_url) => {
+      res.json({ qrCode: data_url, secret: secret.base32 });
+    })
+  }catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/verify-2fa', async (req, res) => {
+  try {
+    const { userId, token } = req.body;
+    await dbConnect();
+    const user = await User.findById(userId);
+
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: token
+    });
+
+    if (verified) {
+      if (!user.isTwoFactorEnabled) {
+        user.isTwoFactorEnabled = true;
+        await user.save();
+      }
+      res.json({ message: 'Verified', isValid: true });
+    } else {
+      res.status(400).json({ message: 'Invalid Token', isValid: false });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 
 module.exports = router;
