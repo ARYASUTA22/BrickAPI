@@ -4,6 +4,7 @@ const cors = require('cors');
 const articlesRoutes = require('./routes/articles');
 const authRoutes = require('./routes/auth');
 const favoritesRoutes = require('./routes/favorites');
+const productsRoutes = require('./routes/products');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -14,6 +15,7 @@ app.use(express.json());
 app.use('/api', authRoutes); 
 app.use('/api', favoritesRoutes);
 app.use('/api/articles', articlesRoutes);
+app.use('/api/products', productsRoutes);
 
 app.get('/', (req, res) => {
   res.send('Server backend LEGO berjalan!');
