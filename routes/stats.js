@@ -8,56 +8,30 @@ router.get('/', async (req, res) => {
   try {
     await dbConnect();
 
-    // 1. Ambil parameter Tahun & Bulan dari URL
-    // Default: Tahun & Bulan saat ini
     const now = new Date();
     const queryYear = req.query.year ? parseInt(req.query.year) : now.getFullYear();
-    const queryMonth = req.query.month ? parseInt(req.query.month) : now.getMonth() + 1; // 1-12
+    const queryMonth = req.query.month ? parseInt(req.query.month) : now.getMonth() + 1;
 
-    // Buat range tanggal awal & akhir bulan tersebut
-    // Note: Month di Date() js mulai dari 0 (Januari = 0)
     const startDate = new Date(queryYear, queryMonth - 1, 1, 0, 0, 0);
-    const endDate = new Date(queryYear, queryMonth, 0, 23, 59, 59); // Tanggal 0 bulan berikutnya = tanggal terakhir bulan ini
-    
-    const daysInMonth = endDate.getDate(); // Misal: 30, 31, atau 28
+    const endDate = new Date(queryYear, queryMonth, 0, 23, 59, 59);
+    const daysInMonth = endDate.getDate(); 
 
-    // --- Total Stats (Global) ---
     const productsCount = await Product.countDocuments();
     const usersCount = await User.countDocuments();
     
     const allUsers = await User.find().select('favorites');
     const totalReviews = allUsers.reduce((acc, user) => acc + (user.favorites ? user.favorites.length : 0), 0);
 
-    // --- Helper: Format Data Harian [0, 0, ... sampai tgl terakhir] ---
     const formatDailyData = (data, totalDays) => {
       const days = Array(totalDays).fill(0);
       data.forEach(item => {
-        // item._id adalah tanggal (1-31)
         if (item._id >= 1 && item._id <= totalDays) {
           days[item._id - 1] = item.count;
         }
       });
       return days;
     };
-
-    // --- Aggregation: User per Hari ---
     const userDaily = await User.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: startDate, $lte: endDate }
-        }
-      },
-      { 
-        $group: { 
-          _id: { $dayOfMonth: "$createdAt" }, // Group by Tanggal (1-31)
-          count: { $sum: 1 } 
-        } 
-      },
-      { $sort: { _id: 1 } }
-    ]);
-
-    // --- Aggregation: Product per Hari ---
-    const productDaily = await Product.aggregate([
       {
         $match: {
           createdAt: { $gte: startDate, $lte: endDate }
@@ -72,7 +46,20 @@ router.get('/', async (req, res) => {
       { $sort: { _id: 1 } }
     ]);
 
-    // --- Aggregation: Favorites Category (Global) ---
+    const productDaily = await Product.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      { 
+        $group: { 
+          _id: { $dayOfMonth: "$createdAt" }, 
+          count: { $sum: 1 } 
+        } 
+      },
+      { $sort: { _id: 1 } }
+    ]);
     const favStatsAggregate = await User.aggregate([
       { $unwind: "$favorites" }, 
       { $addFields: { favoriteObjId: { $toObjectId: "$favorites" } } },
