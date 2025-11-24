@@ -25,6 +25,10 @@ app.get('/', (req, res) => {
   res.send('Server backend LEGO berjalan!');
 });
 
-app.listen(PORT, () => {
-  console.log(`Server backend berjalan di http://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`Server backend berjalan di http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
