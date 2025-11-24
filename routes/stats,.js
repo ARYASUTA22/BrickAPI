@@ -1,0 +1,126 @@
+const express = require('express');
+const router = express.Router();
+const Product = require('../models/Product');
+const User = require('../models/User');
+const dbConnect = require('../lib/dbConnect');
+
+router.get('/', async (req, res) => {
+  try {
+    await dbConnect();
+
+    // 1. Ambil parameter Tahun & Bulan dari URL
+    // Default: Tahun & Bulan saat ini
+    const now = new Date();
+    const queryYear = req.query.year ? parseInt(req.query.year) : now.getFullYear();
+    const queryMonth = req.query.month ? parseInt(req.query.month) : now.getMonth() + 1; // 1-12
+
+    // Buat range tanggal awal & akhir bulan tersebut
+    // Note: Month di Date() js mulai dari 0 (Januari = 0)
+    const startDate = new Date(queryYear, queryMonth - 1, 1, 0, 0, 0);
+    const endDate = new Date(queryYear, queryMonth, 0, 23, 59, 59); // Tanggal 0 bulan berikutnya = tanggal terakhir bulan ini
+    
+    const daysInMonth = endDate.getDate(); // Misal: 30, 31, atau 28
+
+    // --- Total Stats (Global) ---
+    const productsCount = await Product.countDocuments();
+    const usersCount = await User.countDocuments();
+    
+    const allUsers = await User.find().select('favorites');
+    const totalReviews = allUsers.reduce((acc, user) => acc + (user.favorites ? user.favorites.length : 0), 0);
+
+    // --- Helper: Format Data Harian [0, 0, ... sampai tgl terakhir] ---
+    const formatDailyData = (data, totalDays) => {
+      const days = Array(totalDays).fill(0);
+      data.forEach(item => {
+        // item._id adalah tanggal (1-31)
+        if (item._id >= 1 && item._id <= totalDays) {
+          days[item._id - 1] = item.count;
+        }
+      });
+      return days;
+    };
+
+    // --- Aggregation: User per Hari ---
+    const userDaily = await User.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      { 
+        $group: { 
+          _id: { $dayOfMonth: "$createdAt" }, // Group by Tanggal (1-31)
+          count: { $sum: 1 } 
+        } 
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    // --- Aggregation: Product per Hari ---
+    const productDaily = await Product.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      { 
+        $group: { 
+          _id: { $dayOfMonth: "$createdAt" }, 
+          count: { $sum: 1 } 
+        } 
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    // --- Aggregation: Favorites Category (Global) ---
+    const favStatsAggregate = await User.aggregate([
+      { $unwind: "$favorites" }, 
+      { $addFields: { favoriteObjId: { $toObjectId: "$favorites" } } },
+      {
+        $lookup: {
+          from: "products",
+          localField: "favoriteObjId",
+          foreignField: "_id",
+          as: "productDetails"
+        }
+      },
+      { $unwind: "$productDetails" },
+      {
+        $group: {
+          _id: "$productDetails.category",
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } },
+      { $limit: 5 }
+    ]);
+
+    const favLabels = favStatsAggregate.map(item => item._id || 'Uncategorized');
+    const favData = favStatsAggregate.map(item => item.count);
+
+    res.status(200).json({
+      meta: {
+        year: queryYear,
+        month: queryMonth,
+        daysInMonth: daysInMonth
+      },
+      totalStock: productsCount,
+      totalUsers: usersCount,
+      totalReviews: totalReviews,
+      chartData: {
+        users: formatDailyData(userDaily, daysInMonth),
+        products: formatDailyData(productDaily, daysInMonth)
+      },
+      favStats: {
+        labels: favLabels,
+        data: favData
+      }
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+module.exports = router;

@@ -24,7 +24,13 @@ const UserSchema = new Schema({
     default: [],
   },
   role: {
-    type: String, enum: ['user', 'admin'], default: 'user'
+    type: String, 
+    enum: ['user', 'admin'], 
+    default: 'user'
+  },
+  isActive: {
+    type: Boolean,
+    default: true
   },
   twoFactorSecret: {
     type: String,
@@ -33,6 +39,6 @@ const UserSchema = new Schema({
     type: Boolean,
     default: false
   }
-});
+}, { timestamps: true });
 
 module.exports = models.User || model('User', UserSchema);
