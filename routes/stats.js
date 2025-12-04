@@ -82,7 +82,23 @@ router.get("/", async (req, res) => {
 
     const favStatsAggregate = await User.aggregate([
       { $unwind: "$favorites" },
-      { $addFields: { favoriteObjId: { $toObjectId: "$favorites" } } },
+      {
+        $addFields: {
+          favoriteObjId: {
+            $convert: {
+              input: "$favorites",
+              to: "objectId",
+              onError: null,
+              onNull: null
+            }
+          }
+        }
+      },
+      {
+        $match: {
+          favoriteObjId: { $ne: null }
+        }
+      },
       {
         $lookup: {
           from: "products",
